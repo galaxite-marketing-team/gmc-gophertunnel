@@ -269,6 +269,10 @@ func listenConn(conn *Conn, logger *log.Logger, l, c chan struct{}) {
 		_ = conn.Close()
 	}()
 	for {
+		if conn.spawnedIn && conn.disableDecoding {
+			break
+		}
+
 		// We finally arrived at the packet decoding loop. We constantly decode packets that arrive
 		// and push them to the Conn so that they may be processed.
 		packets, err := conn.dec.Decode()
