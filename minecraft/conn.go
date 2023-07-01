@@ -106,6 +106,9 @@ type Conn struct {
 	// loggedIn is a bool indicating if the connection was logged in. It is set to true after the entire login
 	// sequence is completed.
 	loggedIn bool
+	// spawnedIn is a bool indicating if the connection has spawned in the world. It is set to true after the
+	// SetLocalPlayerAsInitialized packet was sent to the client.
+	spawnedIn bool
 	// spawn is a bool channel indicating if the connection is currently waiting for its spawning in
 	// the world: It is completing a sequence that will result in the spawning.
 	spawn           chan struct{}
@@ -556,7 +559,7 @@ func (conn *Conn) deferPacket(pk *packetData) {
 // receive receives an incoming serialised packet from the underlying connection. If the connection is not yet
 // logged in, the packet is immediately handled.
 func (conn *Conn) receive(data []byte) error {
-	if conn.disableDecoding {
+	if conn.spawnedIn && conn.disableDecoding {
 		return nil
 	}
 	pkData, err := parseData(data, conn)
@@ -1368,6 +1371,7 @@ func (conn *Conn) tryFinaliseClientConn() {
 
 		close(conn.spawn)
 		conn.loggedIn = true
+		conn.spawnedIn = true
 		_ = conn.WritePacket(&packet.SetLocalPlayerAsInitialised{EntityRuntimeID: conn.gameData.EntityRuntimeID})
 	}
 }
