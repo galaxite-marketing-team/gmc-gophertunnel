@@ -25,6 +25,7 @@ type Decoder struct {
 	encrypt     *encrypt
 
 	checkPacketLimit bool
+	disableDecoding  bool
 }
 
 // packetReader is used to read packets immediately instead of copying them in a buffer first. This is a
@@ -66,6 +67,11 @@ func (decoder *Decoder) DisableBatchPacketLimit() {
 	decoder.checkPacketLimit = false
 }
 
+// DisableDecoding disables decoding of packets.
+func (decoder *Decoder) DisableDecoding() {
+	decoder.disableDecoding = true
+}
+
 const (
 	// header is the header of compressed 'batches' from Minecraft.
 	header = 0xfe
@@ -89,6 +95,9 @@ func (decoder *Decoder) Decode() (packets [][]byte, err error) {
 		return nil, fmt.Errorf("error reading batch from reader: %v", err)
 	}
 	if len(data) == 0 {
+		return nil, nil
+	}
+	if decoder.disableDecoding {
 		return nil, nil
 	}
 	if data[0] != header {
