@@ -19,6 +19,7 @@ import (
 	"log"
 	rand2 "math/rand"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -94,6 +95,14 @@ type Dialer struct {
 	// the client when an XUID is present without logging in.
 	// For getting this to work with BDS, authentication should be disabled.
 	KeepXBLIdentityData bool
+
+	// HTTPClient is the http.Client used to make HTTP requests to the Microsoft Live Connect API. If nil,
+	// the default http.Client is used.
+	HTTPClient *http.Client
+
+	// DisablePacketDecoding disables decoding of packets when they are received. This will prevent ReadPacket
+	// from returning packets, but will also save some CPU time.
+	DisablePacketDecoding bool
 }
 
 // Dial dials a Minecraft connection to the address passed over the network passed. The network is typically
@@ -147,13 +156,6 @@ func (d Dialer) DialTimeout(network, address string, timeout time.Duration) (*Co
 func (d Dialer) DialContext(ctx context.Context, network, address string) (conn *Conn, err error) {
 	key, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 
-	var chainData string
-	if d.TokenSource != nil {
-		chainData, err = authChain(ctx, d.TokenSource, key)
-		if err != nil {
-			return nil, &net.OpError{Op: "dial", Net: "minecraft", Err: err}
-		}
-	}
 	if d.ErrorLog == nil {
 		d.ErrorLog = log.New(os.Stderr, "", log.LstdFlags)
 	}
@@ -162,6 +164,17 @@ func (d Dialer) DialContext(ctx context.Context, network, address string) (conn 
 	}
 	if d.FlushRate == 0 {
 		d.FlushRate = time.Second / 20
+	}
+	if d.HTTPClient == nil {
+		d.HTTPClient = http.DefaultClient
+	}
+
+	var chainData string
+	if d.TokenSource != nil {
+		chainData, err = authChain(ctx, d.HTTPClient, d.TokenSource, key)
+		if err != nil {
+			return nil, &net.OpError{Op: "dial", Net: "minecraft", Err: err}
+		}
 	}
 
 	n, ok := networkByID(network)
@@ -189,6 +202,7 @@ func (d Dialer) DialContext(ctx context.Context, network, address string) (conn 
 	conn.cacheEnabled = d.EnableClientCache
 	conn.disconnectOnInvalidPacket = d.DisconnectOnInvalidPackets
 	conn.disconnectOnUnknownPacket = d.DisconnectOnUnknownPackets
+	conn.disableDecoding = d.DisablePacketDecoding
 
 	defaultIdentityData(&conn.identityData)
 	defaultClientData(address, conn.identityData.DisplayName, &conn.clientData)
@@ -286,19 +300,19 @@ func listenConn(conn *Conn, logger *log.Logger, l, c chan struct{}) {
 
 // authChain requests the Minecraft auth JWT chain using the credentials passed. If successful, an encoded
 // chain ready to be put in a login request is returned.
-func authChain(ctx context.Context, src oauth2.TokenSource, key *ecdsa.PrivateKey) (string, error) {
+func authChain(ctx context.Context, client *http.Client, src oauth2.TokenSource, key *ecdsa.PrivateKey) (string, error) {
 	// Obtain the Live token, and using that the XSTS token.
 	liveToken, err := src.Token()
 	if err != nil {
 		return "", fmt.Errorf("error obtaining Live Connect token: %v", err)
 	}
-	xsts, err := auth.RequestXBLToken(ctx, liveToken, "https://multiplayer.minecraft.net/")
+	xsts, err := auth.RequestXBLToken(client, ctx, liveToken, "https://multiplayer.minecraft.net/")
 	if err != nil {
 		return "", fmt.Errorf("error obtaining XBOX Live token: %v", err)
 	}
 
 	// Obtain the raw chain data using the
-	chain, err := auth.RequestMinecraftChain(ctx, xsts, key)
+	chain, err := auth.RequestMinecraftChain(client, ctx, xsts, key)
 	if err != nil {
 		return "", fmt.Errorf("error obtaining Minecraft auth chain: %v", err)
 	}

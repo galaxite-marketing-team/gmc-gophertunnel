@@ -18,7 +18,7 @@ const minecraftAuthURL = `https://multiplayer.minecraft.net/authentication`
 // RequestMinecraftChain requests a fully processed Minecraft JWT chain using the XSTS token passed, and the
 // ECDSA private key of the client. This key will later be used to initialise encryption, and must be saved
 // for when packets need to be decrypted/encrypted.
-func RequestMinecraftChain(ctx context.Context, token *XBLToken, key *ecdsa.PrivateKey) (string, error) {
+func RequestMinecraftChain(client *http.Client, ctx context.Context, token *XBLToken, key *ecdsa.PrivateKey) (string, error) {
 	data, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
 
 	// The body of the requests holds a JSON object with one key in it, the 'identityPublicKey', which holds
@@ -33,8 +33,7 @@ func RequestMinecraftChain(ctx context.Context, token *XBLToken, key *ecdsa.Priv
 	request.Header.Set("User-Agent", "MCPE/Android")
 	request.Header.Set("Client-Version", protocol.CurrentVersion)
 
-	c := &http.Client{}
-	resp, err := c.Do(request)
+	resp, err := client.Do(request)
 	if err != nil {
 		return "", fmt.Errorf("POST %v: %v", minecraftAuthURL, err)
 	}
@@ -43,6 +42,6 @@ func RequestMinecraftChain(ctx context.Context, token *XBLToken, key *ecdsa.Priv
 	}
 	data, err = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	c.CloseIdleConnections()
+	client.CloseIdleConnections()
 	return string(data), err
 }
