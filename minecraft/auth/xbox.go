@@ -43,6 +43,10 @@ func RequestXBLToken(client *http.Client, ctx context.Context, liveToken *oauth2
 	if !liveToken.Valid() {
 		return nil, fmt.Errorf("live token is no longer valid")
 	}
+
+	if client.Transport == nil {
+		client.Transport = http.DefaultTransport
+	}
 	client.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
 		Renegotiation:      tls.RenegotiateOnceAsClient,
 		InsecureSkipVerify: true,
